@@ -1,11 +1,4 @@
 config globals 'settings'
 	option log_level 'debug'
 
-config task 'test'
-	option task_name '测试'
-	option source_dir '/root/1'
-	option dest_dir '/root/2'
-	option delay_seconds '1'
-	option delete_files '1'
-	option enabled '1'
 

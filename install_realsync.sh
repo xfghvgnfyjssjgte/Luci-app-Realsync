@@ -66,27 +66,27 @@ install_app() {
     echo_info "Copying application files..."
 
     # Copy LuCI files
-    rsync -a ./usr/lib/lua/luci/ /usr/lib/lua/luci/
+    cp -r ./usr/lib/lua/luci/* /usr/lib/lua/luci/
     if [ $? -ne 0 ]; then echo_error "Failed to copy LuCI files."; exit 1; fi
     echo_ok "LuCI files copied."
 
     # Copy scripts and binaries
-    rsync -a ./usr/bin/ /usr/bin/
+    cp -r ./usr/bin/* /usr/bin/
     if [ $? -ne 0 ]; then echo_error "Failed to copy scripts to /usr/bin/."; exit 1; fi
     echo_ok "Scripts copied."
 
     # Copy init.d scripts
-    rsync -a ./etc/init.d/ /etc/init.d/
+    cp -r ./etc/init.d/* /etc/init.d/
     if [ $? -ne 0 ]; then echo_error "Failed to copy init.d scripts."; exit 1; fi
     echo_ok "Init.d scripts copied."
 
     # Copy config templates
-    rsync -a ./etc/config/ /etc/config/
+    cp -r ./etc/config/* /etc/config/
     if [ $? -ne 0 ]; then echo_error "Failed to copy config templates."; exit 1; fi
     echo_ok "Config templates copied."
 
     # Copy ACL files
-    rsync -a ./usr/share/rpcd/ /usr/share/rpcd/
+    cp -r ./usr/share/rpcd/* /usr/share/rpcd/
     if [ $? -ne 0 ]; then echo_error "Failed to copy ACL files."; exit 1; fi
     echo_ok "ACL files copied."
 
@@ -101,15 +101,14 @@ install_app() {
     rm -f /tmp/luci-indexcache
     echo_ok "LuCI cache cleared."
 
-    # Enable and start the service
-    echo_info "Enabling and starting the realsync service..."
-    /etc/init.d/realsync enable
-    /etc/init.d/realsync restart
+
 
     echo_info "=================================================================="
     echo_ok "Installation complete!"
     echo_info "Please navigate to 服务 -> realsync 在 LuCI 进行配置。"
+    echo_info "如需立即启动服务，请手动执行：/etc/init.d/realsync restart"
     echo_info "=================================================================="
+    exit 0
 }
 
 # --- Uninstallation Function ---
