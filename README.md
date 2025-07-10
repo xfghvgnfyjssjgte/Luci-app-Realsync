@@ -19,9 +19,11 @@
 
 ## Installation
 
-1. Upload all project files to your OpenWrt device (recommended `/root` or `/full` directory).
+1. Upload all project files to your OpenWrt device (recommended `/root` or `/tmp` directory).
 2. Make the install script executable:
    ```sh
+   git clone https://github.com/xfghvgnfyjssjgte/Luci-app-Realsync.git
+   cd realsync
    chmod +x install_realsync.sh
    ```
 3. Run the installer:
@@ -63,8 +65,8 @@
 
 ## Contact
 
-- Author: [Your Name]
-- Email: [your@email.com]
+- Author: [xfghvgnfyjssjgte]
+- Email: [xfghvgnfyjssjgte@gmail.com]
 - Issues: Please submit issues on GitHub
 
 ---
