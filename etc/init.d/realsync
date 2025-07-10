@@ -1,0 +1,58 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+USE_PROCD=1
+
+start_service() {
+    logger -t realsync "start_service: 强制刷新UCI缓存"
+    uci revert realsync
+    config_load realsync
+    logger -t realsync "start_service: 开始遍历任务"
+    config_foreach start_task task
+    logger -t realsync "start_service: 任务遍历结束"
+}
+
+start_task() {
+    local section="$1"
+    local enabled
+    config_get enabled "$section" enabled
+    logger -t realsync "start_task: section=$section enabled=$enabled"
+    if [ "$enabled" = "1" ]; then
+        logger -t realsync "start_task: section=$section 启动任务"
+        logger -t realsync "start_task: section=$section procd_set_param command /usr/bin/realsync.sh $section"
+        procd_open_instance
+        procd_set_param command /usr/bin/realsync.sh "$section"
+        procd_set_param respawn
+        procd_set_param stdout 1
+        procd_set_param stderr 1
+        procd_close_instance
+    else
+        logger -t realsync "start_task: section=$section 未启用，跳过"
+    fi
+}
+
+
+reload_service() {
+    stop_service
+    start_service
+}
+
+stop_service() {
+    logger -t realsync "stop_service: 杀掉所有 realsync.sh"
+    for i in 1 2 3; do
+        for pid in $(ps | grep "[r]ealsync.sh" | awk "{print \$1}"); do
+            kill -9 "$pid" 2>/dev/null
+        done
+        sleep 1
+    done
+    return 0
+}
+
+print_all_sections() {
+    config_load realsync
+    local section
+    for section in $(uci show realsync | grep "=task" | cut -d. -f2 | cut -d= -f1); do
+        logger -t realsync "print_all_sections: section=$section"
+    done
+}
+
