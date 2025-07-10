@@ -22,7 +22,9 @@
 1. 上传本项目所有文件到 OpenWrt 路由器（推荐 `/root` 或 `/full` 目录）。
 2. 赋予安装脚本执行权限：
    ```sh
-   chmod +x install_realsync.sh
+ git clone https://github.com/xfghvgnfyjssjgte/Luci-app-Realsync.git
+cd realsync
+chmod +x install_realsync.sh
    ```
 3. 执行安装：
    ```sh
