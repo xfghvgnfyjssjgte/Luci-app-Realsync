@@ -65,9 +65,9 @@
 
 ## 联系方式
 
-Author: [xfghvgnfyjssjgte]
+Author: [望天追风や ]
 Email: [xfghvgnfyjssjgte@gmail.com]
-Issues: Please submit issues on GitHub
+
 
 ---
 
