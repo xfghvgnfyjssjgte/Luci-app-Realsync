@@ -63,9 +63,9 @@
 
 ## 联系方式
 
-- 作者: [你的名字]
-- 邮箱: [your@email.com]
-- Issues: 欢迎在 GitHub 提交 issue
+Author: [xfghvgnfyjssjgte]
+Email: [xfghvgnfyjssjgte@gmail.com]
+Issues: Please submit issues on GitHub
 
 ---
 
