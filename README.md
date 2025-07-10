@@ -65,10 +65,6 @@
 
 ## Contact
 
-- Author: [xfghvgnfyjssjgte]
+- Author: [望天追风や ]
 - Email: [xfghvgnfyjssjgte@gmail.com]
-- Issues: Please submit issues on GitHub
 
----
-
-> This project is open source. Contributions are welcome! 
