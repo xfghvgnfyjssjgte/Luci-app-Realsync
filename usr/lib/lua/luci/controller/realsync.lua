@@ -18,6 +18,7 @@ function index()
 	entry({"admin", "services", "realsync", "get_status"}, call("action_get_status")).leaf = true
 	entry({"admin", "services", "realsync", "restart_service"}, call("action_restart_service")).leaf = true
 	entry({"admin", "services", "realsync", "get_log"}, call("action_get_log")).leaf = true
+	entry({"admin", "services", "realsync", "clear_log"}, call("action_clear_log")).leaf = true
 end
 
 local function is_running()
@@ -76,11 +77,33 @@ function action_get_log()
 end
 
 function action_clear_log()
-    -- 调试标记，可选
-    local f = io.open("/tmp/clearlog_called", "w")
-    if f then f:write(os.date()) f:close() end
-    -- 用兼容性最好的方式清空日志
-    os.execute(": > /var/log/realsync.log")
+    -- 用多种方式确保日志被清空
+    local success = false
+    
+    -- 方法1: 使用 echo 命令
+    if luci.sys.call("echo '' > /var/log/realsync.log") == 0 then
+        success = true
+    end
+    
+    -- 方法2: 如果方法1失败，使用 truncate
+    if not success and luci.sys.call("truncate -s 0 /var/log/realsync.log") == 0 then
+        success = true
+    end
+    
+    -- 方法3: 如果前两种都失败，使用 Lua 文件操作
+    if not success then
+        local f = io.open("/var/log/realsync.log", "w")
+        if f then
+            f:write("")
+            f:close()
+            success = true
+        end
+    end
+    
     luci.http.prepare_content("application/json")
-    luci.http.write_json({message = "日志已清空"})
+    if success then
+        luci.http.write_json({success = true, message = "日志已清空"})
+    else
+        luci.http.write_json({success = false, message = "清空日志失败，请检查文件权限"})
+    end
 end 

@@ -36,8 +36,8 @@ log_rotate() {
 }
 
 clear_log() {
-    ：> "$LOG_FILE"
-    log info "日志已被清空"
+    : > "$LOG_FILE"
+    log "日志已被清空"
 }
 
 if [ "$enabled" != "1" ]; then
@@ -74,11 +74,6 @@ inotifywait -mrq -e modify,create,delete "$source_dir" | while read event; do
     fi
 done
 
-log info "任务xxx启动"
-log debug "详细调试信息"
-log info "任务xxx同步完成"
-log info "任务xxx停止"
-
 case "$1" in
     clearlog)
         clear_log
@@ -88,7 +83,6 @@ case "$1" in
         reload_tasks
         exit 0
         ;;
-    # ... 其他命令 ...
 esac
 
 start_task() {
@@ -108,8 +102,8 @@ start_task() {
         return 1
     fi
 
-    # 启动任务命令（示例，需替换为实际任务启动命令）
-    /usr/bin/realsync_task --id "$task_id" &
+    # 启动任务命令
+    /usr/bin/realsync.sh "$task_id" &
     echo $! > "$PID_DIR/$task_id.pid"
     log info "任务 $task_id 启动，PID: $(cat $PID_DIR/$task_id.pid)"
 }
@@ -148,4 +142,4 @@ handle_task() {
 
 reload() {
     /usr/bin/realsync.sh reload
-}
+} 
