@@ -60,6 +60,24 @@
 4. The script will check/install dependencies, copy all files, set permissions, enable and start the service.
 5. After installation, log in to LuCI and go to "Services" -> "realsync" to configure and manage.
 
+## Update
+
+For existing users, use the update script to upgrade to the latest version while preserving your configuration:
+
+```sh
+chmod +x update_realsync.sh
+./update_realsync.sh
+```
+
+The update script will:
+- Backup your current configuration
+- Stop the service
+- Update all application files (except config)
+- Restart the service
+- Restart uhttpd for LuCI interface
+
+**Note**: Your configuration will be preserved during the update process.
+
 ---
 
 ## Usage
