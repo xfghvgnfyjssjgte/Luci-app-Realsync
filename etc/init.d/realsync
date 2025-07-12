@@ -39,27 +39,46 @@ start_task() {
 reload_service() {
     logger -t realsync "reload_service: 重新加载服务"
     stop_service
-    sleep 2
+    sleep 1
     start_service
 }
 
 stop_service() {
-    logger -t realsync "stop_service: 停止所有 realsync 任务"
-    # 停止所有 realsync.sh 进程
-    for i in 1 2 3; do
-        for pid in $(pgrep -f "realsync.sh"); do
-            logger -t realsync "stop_service: 杀掉进程 PID=$pid"
-            kill -TERM "$pid" 2>/dev/null
-        done
-        sleep 1
-        # 如果还有进程，强制杀掉
-        for pid in $(pgrep -f "realsync.sh"); do
-            logger -t realsync "stop_service: 强制杀掉进程 PID=$pid"
-            kill -9 "$pid" 2>/dev/null
-        done
-    done
+    logger -t realsync "stop_service: 开始停止所有 realsync 任务"
+    
+    # 方法1: 使用 killall 强制停止所有 realsync.sh 进程
+    if command -v killall >/dev/null 2>&1; then
+        logger -t realsync "stop_service: 使用 killall 停止进程"
+        killall -9 realsync.sh 2>/dev/null
+        sleep 0.5
+    fi
+    
+    # 方法2: 使用 pkill 停止进程
+    if command -v pkill >/dev/null 2>&1; then
+        logger -t realsync "stop_service: 使用 pkill 停止进程"
+        pkill -9 -f "realsync.sh" 2>/dev/null
+        sleep 0.5
+    fi
+    
+    # 方法3: 使用 pgrep + kill 停止进程（备用方案）
+    local pids=$(pgrep -f "realsync.sh" 2>/dev/null)
+    if [ -n "$pids" ]; then
+        logger -t realsync "stop_service: 使用 pgrep + kill 停止进程: $pids"
+        echo "$pids" | xargs kill -9 2>/dev/null
+        sleep 0.5
+    fi
+    
     # 清理PID文件
     rm -f /var/run/realsync/*.pid 2>/dev/null
+    
+    # 最终检查是否还有进程残留
+    local remaining=$(pgrep -f "realsync.sh" 2>/dev/null)
+    if [ -n "$remaining" ]; then
+        logger -t realsync "stop_service: 警告 - 仍有进程残留: $remaining"
+    else
+        logger -t realsync "stop_service: 所有进程已停止"
+    fi
+    
     return 0
 }
 

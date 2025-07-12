@@ -1,227 +1,199 @@
 #!/bin/sh
 
-# =============================================================================
-#        LuCI App for realsync - Update Script
-# =============================================================================
-#  Run this script from the root of the repository on your OpenWrt device.
-#  Usage: ./update_realsync.sh
-# =============================================================================
+# realsync 升级脚本
+# 用于更新已安装的 realsync 应用到最新版本
 
-# Color codes for output
-C_RED='\033[0;31m'
-C_GREEN='\033[0;32m'
-C_YELLOW='\033[0;33m'
-C_BLUE='\033[0;34m'
-C_NC='\033[0m' # No Color
+set -e
 
-echo_info() { echo -e "${C_BLUE}[INFO]${C_NC} $1"; }
-echo_ok() { echo -e "${C_GREEN}[OK]${C_NC} $1"; }
-echo_warn() { echo -e "${C_YELLOW}[WARN]${C_NC} $1"; }
-echo_error() { echo -e "${C_RED}[ERROR]${C_NC} $1"; }
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-# Ensure running as root
+# 日志函数
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[OK]${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# 超时函数
+timeout_cmd() {
+    local timeout="$1"
+    shift
+    local cmd="$@"
+    
+    # 使用timeout命令（如果可用）
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$timeout" $cmd
+    else
+        # 备用方案：使用perl实现超时
+        perl -e "
+            eval {
+                local \$SIG{ALRM} = sub { die \"timeout\" };
+                alarm $timeout;
+                system(@ARGV);
+                alarm 0;
+            };
+            if (\$@) {
+                exit 1;
+            }
+        " $cmd
+    fi
+}
+
+# 检查是否以root权限运行
 check_root() {
-    if [ "$(id -u)" -ne 0 ]; then
-        echo_error "This script must be run as root. Please use 'sudo' or log in as root."
+    if [ "$(id -u)" != "0" ]; then
+        log_error "此脚本需要root权限运行"
         exit 1
     fi
 }
 
-# Check if realsync is installed
-check_installed() {
-    if [ ! -f /etc/init.d/realsync ]; then
-        echo_error "realsync is not installed. Please run install_realsync.sh first."
-        exit 1
-    fi
-}
-
-# Backup current configuration
+# 备份配置
 backup_config() {
-    echo_info "Backing up current configuration..."
-    if [ -f /etc/config/realsync ]; then
-        cp /etc/config/realsync /etc/config/realsync.backup.$(date +%Y%m%d_%H%M%S)
-        echo_ok "Configuration backed up to /etc/config/realsync.backup.$(date +%Y%m%d_%H%M%S)"
+    log_info "备份当前配置..."
+    local backup_file="/etc/config/realsync.backup.$(date +%Y%m%d_%H%M%S)"
+    if [ -f "/etc/config/realsync" ]; then
+        cp "/etc/config/realsync" "$backup_file"
+        log_success "配置已备份到 $backup_file"
     else
-        echo_warn "No existing configuration found to backup."
+        log_warning "配置文件不存在，跳过备份"
     fi
 }
 
-# Stop the service before update
+# 停止服务（带超时）
 stop_service() {
-    echo_info "Stopping realsync service..."
-    if [ -f /etc/init.d/realsync ]; then
-        /etc/init.d/realsync stop
-        echo_ok "Service stopped."
+    log_info "停止 realsync 服务..."
+    
+    # 设置超时时间（秒）
+    local timeout=30
+    
+    # 尝试停止服务
+    if timeout_cmd "$timeout" /etc/init.d/realsync stop; then
+        log_success "服务已停止"
     else
-        echo_warn "Service script not found, skipping stop."
+        log_warning "服务停止超时，尝试强制停止..."
+        
+        # 强制停止所有相关进程
+        if command -v killall >/dev/null 2>&1; then
+            killall -9 realsync.sh 2>/dev/null || true
+        fi
+        
+        if command -v pkill >/dev/null 2>&1; then
+            pkill -9 -f "realsync.sh" 2>/dev/null || true
+        fi
+        
+        # 清理PID文件
+        rm -f /var/run/realsync/*.pid 2>/dev/null || true
+        
+        log_success "强制停止完成"
     fi
+    
+    # 等待一下确保进程完全退出
+    sleep 2
 }
 
-# Update application files
+# 更新文件
 update_files() {
-    echo_info "Updating application files..."
+    log_info "更新应用文件..."
     
-    # Update LuCI files
-    if [ -d ./usr/lib/lua/luci ]; then
-        cp -r ./usr/lib/lua/luci/* /usr/lib/lua/luci/
-        if [ $? -eq 0 ]; then
-            echo_ok "LuCI files updated."
-        else
-            echo_error "Failed to update LuCI files."
-            return 1
-        fi
+    # 创建必要的目录
+    mkdir -p /usr/bin
+    mkdir -p /usr/lib/lua/luci/controller
+    mkdir -p /usr/lib/lua/luci/model/cbi/realsync
+    mkdir -p /usr/lib/lua/luci/view/realsync
+    mkdir -p /usr/share/rpcd/acl.d
+    mkdir -p /etc/init.d
+    
+    # 复制文件（不覆盖配置文件）
+    if [ -f "usr/bin/realsync.sh" ]; then
+        cp usr/bin/realsync.sh /usr/bin/
+        chmod +x /usr/bin/realsync.sh
     fi
     
-    # Update scripts and binaries
-    if [ -d ./usr/bin ]; then
-        cp -r ./usr/bin/* /usr/bin/
-        if [ $? -eq 0 ]; then
-            echo_ok "Scripts updated."
-        else
-            echo_error "Failed to update scripts."
-            return 1
-        fi
+    if [ -f "etc/init.d/realsync" ]; then
+        cp etc/init.d/realsync /etc/init.d/
+        chmod +x /etc/init.d/realsync
     fi
     
-    # Update init.d scripts
-    if [ -d ./etc/init.d ]; then
-        cp -r ./etc/init.d/* /etc/init.d/
-        if [ $? -eq 0 ]; then
-            echo_ok "Init.d scripts updated."
-        else
-            echo_error "Failed to update init.d scripts."
-            return 1
-        fi
+    if [ -d "usr/lib/lua/luci" ]; then
+        cp -r usr/lib/lua/luci/* /usr/lib/lua/luci/
     fi
     
-    # Update ACL files
-    if [ -d ./usr/share/rpcd ]; then
-        cp -r ./usr/share/rpcd/* /usr/share/rpcd/
-        if [ $? -eq 0 ]; then
-            echo_ok "ACL files updated."
-        else
-            echo_error "Failed to update ACL files."
-            return 1
-        fi
+    if [ -f "usr/share/rpcd/acl.d/luci-app-realsync.json" ]; then
+        cp usr/share/rpcd/acl.d/luci-app-realsync.json /usr/share/rpcd/acl.d/
     fi
     
-    return 0
+    log_success "文件更新完成"
 }
 
-# Set permissions
-set_permissions() {
-    echo_info "Setting executable permissions..."
-    chmod +x /etc/init.d/realsync
-    chmod +x /usr/bin/realsync.sh
-    echo_ok "Permissions set."
+# 重启服务
+restart_service() {
+    log_info "重启 realsync 服务..."
+    
+    # 设置超时时间（秒）
+    local timeout=30
+    
+    if timeout_cmd "$timeout" /etc/init.d/realsync start; then
+        log_success "服务已启动"
+    else
+        log_warning "服务启动超时，但可能仍在后台运行"
+    fi
 }
 
-# Clean LuCI cache
-clean_cache() {
-    echo_info "Cleaning LuCI cache..."
-    rm -f /tmp/luci-indexcache
-    echo_ok "LuCI cache cleared."
-}
-
-# Restart uhttpd for LuCI interface
+# 重启uhttpd
 restart_uhttpd() {
-    echo_info "Restarting uhttpd service for LuCI interface..."
-    if [ -f /etc/init.d/uhttpd ]; then
-        /etc/init.d/uhttpd restart
-        echo_ok "uhttpd service restarted."
+    log_info "重启 uhttpd 服务..."
+    
+    # 设置超时时间（秒）
+    local timeout=30
+    
+    if timeout_cmd "$timeout" /etc/init.d/uhttpd restart; then
+        log_success "uhttpd 已重启"
     else
-        echo_warn "uhttpd service not found, LuCI interface may not display properly."
+        log_warning "uhttpd 重启超时，但可能仍在运行"
     fi
 }
 
-# Start the service after update
-start_service() {
-    echo_info "Starting realsync service..."
-    if [ -f /etc/init.d/realsync ]; then
-        /etc/init.d/realsync start
-        echo_ok "Service started."
-    else
-        echo_error "Service script not found, cannot start service."
-        return 1
-    fi
-}
-
-# Main update function
-update_app() {
+# 主函数
+main() {
+    log_info "开始升级 LuCI App realsync..."
+    
+    # 检查root权限
     check_root
-    check_installed
     
-    echo_info "Starting update of LuCI App realsync..."
-    
-    # Backup configuration
+    # 备份配置
     backup_config
     
-    # Stop service
+    # 停止服务
     stop_service
     
-    # Update files
-    if update_files; then
-        echo_ok "All files updated successfully."
-    else
-        echo_error "Update failed. Please check the errors above."
-        exit 1
-    fi
+    # 更新文件
+    update_files
     
-    # Set permissions
-    set_permissions
+    # 重启服务
+    restart_service
     
-    # Clean cache
-    clean_cache
-    
-    # Restart uhttpd
+    # 重启uhttpd
     restart_uhttpd
     
-    # Start service
-    start_service
-    
-    echo_info "=================================================================="
-    echo_ok "Update complete!"
-    echo_info "Your configuration has been preserved."
-    echo_info "Please navigate to 服务 -> realsync 在 LuCI 进行配置。"
-    echo_info "=================================================================="
-    exit 0
+    log_success "升级完成！"
+    log_info "请登录 LuCI 界面检查服务状态"
+    log_info "配置文件已备份，如需恢复请查看备份文件"
 }
 
-# Show help
-show_help() {
-    echo_info "LuCI App realsync Update Script"
-    echo_info "Usage: ./update_realsync.sh [options]"
-    echo_info ""
-    echo_info "Options:"
-    echo_info "  -h, --help     Show this help message"
-    echo_info "  -f, --force    Force update even if not installed"
-    echo_info ""
-    echo_info "This script will:"
-    echo_info "  1. Backup your current configuration"
-    echo_info "  2. Stop the realsync service"
-    echo_info "  3. Update all application files (except config)"
-    echo_info "  4. Restart the service"
-    echo_info "  5. Restart uhttpd for LuCI interface"
-}
-
-# Main logic
-case "$1" in
-    -h|--help)
-        show_help
-        exit 0
-        ;;
-    -f|--force)
-        # Skip installation check for force update
-        check_root
-        echo_warn "Force update mode - skipping installation check"
-        update_app
-        ;;
-    "")
-        update_app
-        ;;
-    *)
-        echo_error "Invalid option: $1"
-        show_help
-        exit 1
-        ;;
-esac 
+# 执行主函数
+main "$@" 
