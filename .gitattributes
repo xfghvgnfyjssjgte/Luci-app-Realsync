@@ -1,0 +1,16 @@
+# 强制所有文本文件使用LF行结束符
+* text=auto eol=lf
+
+# 确保脚本文件使用LF
+*.sh text eol=lf
+*.lua text eol=lf
+*.htm text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# 二进制文件不转换
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary 

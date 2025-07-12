@@ -1,0 +1,72 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+USE_PROCD=0
+
+start_service() {
+    logger -t realsync "start_service: 强制刷新UCI缓存"
+    uci revert realsync
+    config_load realsync
+    logger -t realsync "start_service: 开始遍历任务"
+    config_foreach start_task task
+    logger -t realsync "start_service: 任务遍历结束"
+}
+
+start_task() {
+    local section="$1"
+    local enabled
+    config_get enabled "$section" enabled
+    logger -t realsync "start_task: section=$section enabled=$enabled"
+    if [ "$enabled" = "1" ]; then
+        logger -t realsync "start_task: section=$section 启动任务"
+        # 检查是否已经在运行
+        if pgrep -f "realsync.sh $section" >/dev/null; then
+            logger -t realsync "start_task: section=$section 已在运行，跳过"
+            return 0
+        fi
+        # 启动任务
+        /usr/bin/realsync.sh "$section" &
+        local pid=$!
+        logger -t realsync "start_task: section=$section 启动成功，PID=$pid"
+        # 保存PID到文件
+        mkdir -p /var/run/realsync
+        echo $pid > "/var/run/realsync/$section.pid"
+    else
+        logger -t realsync "start_task: section=$section 未启用，跳过"
+    fi
+}
+
+reload_service() {
+    logger -t realsync "reload_service: 重新加载服务"
+    stop_service
+    sleep 2
+    start_service
+}
+
+stop_service() {
+    logger -t realsync "stop_service: 停止所有 realsync 任务"
+    # 停止所有 realsync.sh 进程
+    for i in 1 2 3; do
+        for pid in $(pgrep -f "realsync.sh"); do
+            logger -t realsync "stop_service: 杀掉进程 PID=$pid"
+            kill -TERM "$pid" 2>/dev/null
+        done
+        sleep 1
+        # 如果还有进程，强制杀掉
+        for pid in $(pgrep -f "realsync.sh"); do
+            logger -t realsync "stop_service: 强制杀掉进程 PID=$pid"
+            kill -9 "$pid" 2>/dev/null
+        done
+    done
+    # 清理PID文件
+    rm -f /var/run/realsync/*.pid 2>/dev/null
+    return 0
+}
+
+print_all_sections() {
+    config_load realsync
+    local section
+    for section in $(uci show realsync | grep "=task" | cut -d. -f2 | cut -d= -f1); do
+        logger -t realsync "print_all_sections: section=$section"
+    done
+} 
