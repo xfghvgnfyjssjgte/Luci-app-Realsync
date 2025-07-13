@@ -1,145 +1,93 @@
 #!/bin/sh
 
+# 包含 OpenWrt 的函数库
 . /lib/functions.sh
 
+# 第一个参数是任务的 section 名
 TASK_SECTION="$1"
-CONFIG_FILE="/etc/config/realsync"
 LOG_FILE="/var/log/realsync.log"
-LOG_LEVEL="info" # 可通过 UCI 配置覆盖
 MAX_LOG_SIZE=10485760 # 10MB
-PID_DIR="/var/run/realsync"
 
-config_load realsync
+# 检查任务名是否为空
+if [ -z "$TASK_SECTION" ]; then
+    echo "错误：未提供任务名称。" >&2
+    exit 1
+fi
 
-config_get enabled "$TASK_SECTION" enabled
-config_get task_name "$TASK_SECTION" task_name
-config_get source_dir "$TASK_SECTION" source_dir
-config_get dest_dir "$TASK_SECTION" dest_dir
-config_get rsync_options "$TASK_SECTION" rsync_options
-config_get delete_files "$TASK_SECTION" delete_files
-config_get delay_seconds "$TASK_SECTION" delay_seconds
-
+# 日志函数
 log() {
     local level="$1"
     shift
     local msg="$*"
-    [ "$level" = "debug" ] && [ "$LOG_LEVEL" != "debug" ] && return
-    echo "[$(date '+%F %T')] [$level] [${task_name:-$TASK_SECTION}] $msg" >> "$LOG_FILE"
-    log_rotate
-}
-
-log_rotate() {
+    # procd 会处理时间戳，但我们为了日志格式统一，依然自己加
+    echo "[$(date '+%F %T')] [$level] [$TASK_SECTION] $msg" >> "$LOG_FILE"
+	# 检查日志文件大小并执行轮转
     [ -f "$LOG_FILE" ] && [ $(stat -c%s "$LOG_FILE") -ge $MAX_LOG_SIZE ] && {
         mv "$LOG_FILE" "$LOG_FILE.1"
         touch "$LOG_FILE"
     }
 }
 
-clear_log() {
-    : > "$LOG_FILE"
-    log "日志已被清空"
-}
+# --- 开始执行任务 ---
 
+log "info" "任务进程启动。"
+
+# 加载 realsync 配置文件
+config_load realsync
+
+# 读取配置项
+config_get enabled "$TASK_SECTION" enabled
+config_get source_dir "$TASK_SECTION" source_dir
+config_get dest_dir "$TASK_SECTION" dest_dir
+config_get delete_files "$TASK_SECTION" delete_files
+
+# 如果任务在配置中被禁用，则记录日志并退出
 if [ "$enabled" != "1" ]; then
-    log "任务 $task_name 未启用，退出"
+    log "info" "任务在配置中被禁用，正常退出。"
     exit 0
 fi
 
+# 检查源目录是否存在
 if [ ! -d "$source_dir" ]; then
-    log "错误: 源目录 $source_dir 不存在"
+    log "error" "源目录 '$source_dir' 不存在，任务无法启动。"
     exit 1
 fi
 
+# 确保目标目录存在
 mkdir -p "$dest_dir" 2>/dev/null
-mkdir -p "$PID_DIR"
 
-log info "启动 inotifywait 监控: $source_dir -> $dest_dir"
+# --- 执行首次同步 ---
+log "info" "执行首次全量同步: $source_dir -> $dest_dir"
+RSYNC_OPTS="-av"
+[ "$delete_files" = "1" ] && RSYNC_OPTS="$RSYNC_OPTS --delete"
 
-# 读取 delete_files 配置
-config_get delete_files "$TASK_SECTION" delete_files
+rsync $RSYNC_OPTS "$source_dir/" "$dest_dir/"
+if [ $? -eq 0 ]; then
+    log "info" "首次同步成功。"
+else
+    log "warn" "首次同步可能存在问题，请检查 rsync 输出。"
+fi
 
-inotifywait -mrq -e modify,create,delete "$source_dir" | while read event; do
-    log info "检测到文件变动: $event"
-    log debug "准备执行 rsync 同步: $source_dir -> $dest_dir"
-    RSYNC_OPTS="-av"
-    [ "$delete_files" = "1" ] && RSYNC_OPTS="$RSYNC_OPTS --delete"
+# --- 启动循环监控 ---
+log "info" "启动 inotifywait 持续监控目录: $source_dir"
+
+# -m: monitor, 持续监控
+# -q: quiet, 只输出事件信息
+# -e ...: 指定监控的事件类型
+inotifywait -m -q -r -e modify,create,delete,move "$source_dir" | while read path event file; do
+    log "info" "检测到变更: $path$file ($event)，准备同步。"
+    
+    # 执行 rsync 同步
     rsync_output=$(rsync $RSYNC_OPTS "$source_dir/" "$dest_dir/" 2>&1)
     rsync_ret=$?
+    
     if [ $rsync_ret -eq 0 ]; then
-        log info "同步完成: $source_dir -> $dest_dir"
-        log debug "rsync 输出: $rsync_output"
+        log "info" "同步完成。"
     else
-        log info "同步失败: $source_dir -> $dest_dir"
-        log debug "rsync 错误输出: $rsync_output"
+        log "error" "同步失败！rsync 返回码: $rsync_ret. 错误信息: $rsync_output"
     fi
 done
 
-case "$1" in
-    clearlog)
-        clear_log
-        exit 0
-        ;;
-    reload)
-        reload_tasks
-        exit 0
-        ;;
-esac
+log "warn" "inotifywait 循环意外退出，任务进程结束。procd 将在稍后重启此任务。"
 
-start_task() {
-    local task_id="$1"
-    # 读取任务配置
-    config_load realsync
-    config_get source_dir "$task_id" source_dir
-    config_get dest_dir "$task_id" dest_dir
-
-    # 检查目录是否存在
-    if [ ! -d "$source_dir" ]; then
-        log info "任务 $task_id 启动失败：源目录 $source_dir 不存在"
-        return 1
-    fi
-    if [ ! -d "$dest_dir" ]; then
-        log info "任务 $task_id 启动失败：目标目录 $dest_dir 不存在"
-        return 1
-    fi
-
-    # 启动任务命令
-    /usr/bin/realsync.sh "$task_id" &
-    echo $! > "$PID_DIR/$task_id.pid"
-    log info "任务 $task_id 启动，PID: $(cat $PID_DIR/$task_id.pid)"
-}
-
-stop_task() {
-    local task_id="$1"
-    local pid_file="$PID_DIR/$task_id.pid"
-    if [ -f "$pid_file" ]; then
-        kill $(cat "$pid_file") 2>/dev/null
-        rm -f "$pid_file"
-        log info "任务 $task_id 已停止"
-    fi
-}
-
-reload_tasks() {
-    config_load realsync
-    config_foreach handle_task task
-}
-
-handle_task() {
-    local section="$1"
-    config_get enabled "$section" enabled
-    config_get task_id "$section" task_id
-    [ -z "$task_id" ] && task_id="$section"
-    if [ "$enabled" = "1" ]; then
-        # 检查进程是否已存在，未启动则启动
-        local pid_file="$PID_DIR/$task_id.pid"
-        if [ ! -f "$pid_file" ] || ! kill -0 $(cat "$pid_file") 2>/dev/null; then
-            start_task "$task_id"
-        fi
-    else
-        stop_task "$task_id"
-    fi
-    config_get delete_files "$section" delete_files
-}
-
-reload() {
-    /usr/bin/realsync.sh reload
-} 
+exit 0

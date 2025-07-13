@@ -1,91 +1,70 @@
 #!/bin/sh /etc/rc.common
 
+USE_PROCD=1
 START=99
-USE_PROCD=0
+STOP=15
 
+PROG=/usr/bin/realsync.sh
+
+# procd 会自动处理日志，但我们保留一个简单的日志函数用于启动脚本自身的调试
+log() {
+	echo "$(date '+%Y-%m-%d %H:%M:%S') [init.d] $1" >> /var/log/realsync.log
+}
+
+# 启动服务的核心函数
 start_service() {
-    logger -t realsync "start_service: 强制刷新UCI缓存"
-    uci revert realsync
-    config_load realsync
-    logger -t realsync "start_service: 开始遍历任务"
-    config_foreach start_task task
-    logger -t realsync "start_service: 任务遍历结束"
+	log "开始启动 Realsync 服务..."
+
+	# 加载配置
+	config_load realsync
+
+	# 遍历所有 'task' 类型的配置 section
+	config_foreach start_task task
+	
+	log "Realsync 服务启动命令已全部提交给 procd"
 }
 
+# 为每个任务启动一个 procd 实例
 start_task() {
-    local section="$1"
-    local enabled
-    config_get enabled "$section" enabled
-    logger -t realsync "start_task: section=$section enabled=$enabled"
-    if [ "$enabled" = "1" ]; then
-        logger -t realsync "start_task: section=$section 启动任务"
-        # 检查是否已经在运行
-        if pgrep -f "realsync.sh $section" >/dev/null; then
-            logger -t realsync "start_task: section=$section 已在运行，跳过"
-            return 0
-        fi
-        # 启动任务
-        /usr/bin/realsync.sh "$section" &
-        local pid=$!
-        logger -t realsync "start_task: section=$section 启动成功，PID=$pid"
-        # 保存PID到文件
-        mkdir -p /var/run/realsync
-        echo $pid > "/var/run/realsync/$section.pid"
-    else
-        logger -t realsync "start_task: section=$section 未启用，跳过"
-    fi
+	local section="$1"
+	local enabled
+
+	# 获取任务是否启用
+	config_get_bool enabled "$section" enabled 0
+
+	# 如果任务未启用，则直接返回
+	if [ "$enabled" -eq 0 ]; then
+		log "任务 '$section' 未启用，跳过。"
+		return
+	fi
+
+	log "正在为任务 '$section' 创建 procd 实例..."
+
+	# 开启一个 procd 服务实例，实例名就是任务的 section 名
+	procd_open_instance "$section"
+
+	# 设置实例要执行的命令，即我们的 worker 脚本，参数是任务名
+	procd_set_param command "$PROG" "$section"
+
+	# 设置 respawn，当进程意外退出时，procd 会自动重启它
+	# 参数分别是：初始延迟、达到阈值的重试次数、重试时间窗口、超出阈值后的禁用时间（0为永不禁用）
+	procd_set_param respawn 5 10 60 0
+
+	# 将标准输出和标准错误重定向到系统日志 (logd)
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+
+	# 关闭 procd 实例定义，提交给 procd 执行
+	procd_close_instance
 }
 
+# procd 会自动处理 reload
 reload_service() {
-    logger -t realsync "reload_service: 重新加载服务"
-    stop_service
-    sleep 1
-    start_service
+	stop
+	sleep 1
+	start
 }
 
-stop_service() {
-    logger -t realsync "stop_service: 开始停止所有 realsync 任务"
-    
-    # 方法1: 使用 killall 强制停止所有 realsync.sh 进程
-    if command -v killall >/dev/null 2>&1; then
-        logger -t realsync "stop_service: 使用 killall 停止进程"
-        killall -9 realsync.sh 2>/dev/null
-        sleep 0.5
-    fi
-    
-    # 方法2: 使用 pkill 停止进程
-    if command -v pkill >/dev/null 2>&1; then
-        logger -t realsync "stop_service: 使用 pkill 停止进程"
-        pkill -9 -f "realsync.sh" 2>/dev/null
-        sleep 0.5
-    fi
-    
-    # 方法3: 使用 pgrep + kill 停止进程（备用方案）
-    local pids=$(pgrep -f "realsync.sh" 2>/dev/null)
-    if [ -n "$pids" ]; then
-        logger -t realsync "stop_service: 使用 pgrep + kill 停止进程: $pids"
-        echo "$pids" | xargs kill -9 2>/dev/null
-        sleep 0.5
-    fi
-    
-    # 清理PID文件
-    rm -f /var/run/realsync/*.pid 2>/dev/null
-    
-    # 最终检查是否还有进程残留
-    local remaining=$(pgrep -f "realsync.sh" 2>/dev/null)
-    if [ -n "$remaining" ]; then
-        logger -t realsync "stop_service: 警告 - 仍有进程残留: $remaining"
-    else
-        logger -t realsync "stop_service: 所有进程已停止"
-    fi
-    
-    return 0
-}
+# procd 会自动处理 stop，我们不需要写 stop_service
+# procd 会终结所有由它启动的实例
 
-print_all_sections() {
-    config_load realsync
-    local section
-    for section in $(uci show realsync | grep "=task" | cut -d. -f2 | cut -d= -f1); do
-        logger -t realsync "print_all_sections: section=$section"
-    done
-} 
