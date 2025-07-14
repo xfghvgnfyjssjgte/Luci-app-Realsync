@@ -91,14 +91,11 @@ function fetchLog() {
     });
 }
 
-// 手动刷新按钮
 document.getElementById('refreshlog').onclick = function() {
     fetchLog();
 };
 
-// 自动刷新，每1秒
 setInterval(fetchLog, 1000);
 
-// 页面加载时立即刷新一次
 fetchLog();
 </script>

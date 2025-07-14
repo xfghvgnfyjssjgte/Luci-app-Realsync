@@ -79,7 +79,7 @@ function m.on_after_commit(self)
         local now = nixio.fs.readfile("/etc/config/realsync")
         if now ~= old then break end
     end
-    os.execute("uci reload_config")  -- 新增，强制刷新UCI类型缓存
+    os.execute("uci reload_config")
     os.execute("sleep 1")
     os.execute("(sleep 2; /etc/init.d/realsync restart) &")
 end

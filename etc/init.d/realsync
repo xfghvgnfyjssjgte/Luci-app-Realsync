@@ -6,33 +6,26 @@ STOP=15
 
 PROG=/usr/bin/realsync.sh
 
-# procd 会自动处理日志，但我们保留一个简单的日志函数用于启动脚本自身的调试
 log() {
 	echo "$(date '+%Y-%m-%d %H:%M:%S') [init.d] $1" >> /var/log/realsync.log
 }
 
-# 启动服务的核心函数
 start_service() {
 	log "开始启动 Realsync 服务..."
 
-	# 加载配置
 	config_load realsync
 
-	# 遍历所有 'task' 类型的配置 section
 	config_foreach start_task task
 	
 	log "Realsync 服务启动命令已全部提交给 procd"
 }
 
-# 为每个任务启动一个 procd 实例
 start_task() {
 	local section="$1"
 	local enabled
 
-	# 获取任务是否启用
 	config_get_bool enabled "$section" enabled 0
 
-	# 如果任务未启用，则直接返回
 	if [ "$enabled" -eq 0 ]; then
 		log "任务 '$section' 未启用，跳过。"
 		return
@@ -40,31 +33,21 @@ start_task() {
 
 	log "正在为任务 '$section' 创建 procd 实例..."
 
-	# 开启一个 procd 服务实例，实例名就是任务的 section 名
 	procd_open_instance "$section"
 
-	# 设置实例要执行的命令，即我们的 worker 脚本，参数是任务名
 	procd_set_param command "$PROG" "$section"
 
-	# 设置 respawn，当进程意外退出时，procd 会自动重启它
-	# 参数分别是：初始延迟、达到阈值的重试次数、重试时间窗口、超出阈值后的禁用时间（0为永不禁用）
 	procd_set_param respawn 5 10 60 0
 
-	# 将标准输出和标准错误重定向到系统日志 (logd)
 	procd_set_param stdout 1
 	procd_set_param stderr 1
 
-	# 关闭 procd 实例定义，提交给 procd 执行
 	procd_close_instance
 }
 
-# procd 会自动处理 reload
 reload_service() {
 	stop
 	sleep 1
 	start
 }
-
-# procd 会自动处理 stop，我们不需要写 stop_service
-# procd 会终结所有由它启动的实例
 

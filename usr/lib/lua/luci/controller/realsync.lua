@@ -14,7 +14,6 @@ function index()
 	entry({"admin", "services", "realsync", "config"}, cbi("realsync/config"), _("配置信息"), 10).leaf = true
 	entry({"admin", "services", "realsync", "status"}, cbi("realsync/status"), _("状态信息"), 20).leaf = true
 	
-	-- AJAX 接口
 	entry({"admin", "services", "realsync", "get_status"}, call("action_get_status")).leaf = true
 	entry({"admin", "services", "realsync", "restart_service"}, call("action_restart_service")).leaf = true
 	entry({"admin", "services", "realsync", "get_log"}, call("action_get_log")).leaf = true
@@ -42,7 +41,6 @@ function action_get_status()
             enable = (s.enabled == "1"),
             status = "未知"
         }
-        -- 检查进程（示例：通过pid文件或ps命令）
         local handle = io.popen("ps | grep '[r]ealsync.sh " .. s['.name'] .. "'")
         local output = handle:read("*a")
         handle:close()
@@ -77,20 +75,16 @@ function action_get_log()
 end
 
 function action_clear_log()
-    -- 用多种方式确保日志被清空
     local success = false
     
-    -- 方法1: 使用 echo 命令
     if luci.sys.call("echo '' > /var/log/realsync.log") == 0 then
         success = true
     end
     
-    -- 方法2: 如果方法1失败，使用 truncate
     if not success and luci.sys.call("truncate -s 0 /var/log/realsync.log") == 0 then
         success = true
     end
     
-    -- 方法3: 如果前两种都失败，使用 Lua 文件操作
     if not success then
         local f = io.open("/var/log/realsync.log", "w")
         if f then
