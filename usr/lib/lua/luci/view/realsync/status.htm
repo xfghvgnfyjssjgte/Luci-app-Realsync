@@ -94,6 +94,16 @@
 .log-event-type.create { color: #4caf50; font-weight: bold; }
 .log-event-type.delete { color: #ff4c4c; font-weight: bold; }
 .log-event-type.move   { color: #ff9800; font-weight: bold; }
+.realsync-task-path-ellipsis {
+    font-size: 11px;
+    color: #666;
+    margin-top: 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+    display: block;
+}
 </style>
 
 <div class="realsync-container">
@@ -167,12 +177,14 @@ function renderTaskList() {
         else if (task.status === '未启用') statusClass = 'disabled';
         else statusClass = '';
         const statusText = task.status;
+        // 路径省略显示+悬停完整路径
+        const pathText = `${task.source_dir} → ${task.dest_dir}`;
         html += `
             <div class="realsync-task-item" onclick="selectTask('${task.section}')">
                 <div class="realsync-task-name">${task.name}</div>
                 <div class="realsync-task-status ${statusClass}">${statusText}</div>
-                <div style="font-size: 11px; color: #666; margin-top: 5px;">
-                    ${task.source_dir} → ${task.dest_dir}
+                <div class="realsync-task-path-ellipsis" title="${pathText}">
+                    ${pathText}
                 </div>
             </div>
         `;
