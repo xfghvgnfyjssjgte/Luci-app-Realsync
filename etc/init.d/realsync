@@ -12,40 +12,41 @@ log() {
 
 start_service() {
 	log "开始启动 Realsync 服务..."
-
 	config_load realsync
-
 	config_foreach start_task task
-	
 	log "Realsync 服务启动命令已全部提交给 procd"
 }
 
 start_task() {
 	local section="$1"
 	local enabled
-
 	config_get_bool enabled "$section" enabled 0
-
 	if [ "$enabled" -eq 0 ]; then
 		log "任务 '$section' 未启用，跳过。"
 		return
 	fi
-
 	log "正在为任务 '$section' 创建 procd 实例..."
-
 	procd_open_instance "$section"
-
 	procd_set_param command "$PROG" "$section"
-
 	procd_set_param respawn 5 10 60 0
-
 	procd_set_param stdout 1
 	procd_set_param stderr 1
-
 	procd_close_instance
 }
 
 reload_service() {
+	restart
+}
+
+stop_service() {
+	log "停止所有 Realsync 任务..."
+	# 先让procd正常终止所有实例
+	# 再兜底kill所有realsync.sh进程
+	killall realsync.sh 2>/dev/null
+	log "已killall realsync.sh"
+}
+
+restart_service() {
 	stop
 	sleep 1
 	start

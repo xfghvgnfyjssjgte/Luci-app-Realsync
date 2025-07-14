@@ -157,6 +157,7 @@ install_app() {
     echo_info "Restarting uhttpd service for LuCI interface..."
     if [ -f /etc/init.d/uhttpd ]; then
         /etc/init.d/uhttpd restart
+        /etc/init.d/rpcd restart
         echo_ok "uhttpd service restarted."
     else
         echo_warn "uhttpd service not found, LuCI interface may not display properly."

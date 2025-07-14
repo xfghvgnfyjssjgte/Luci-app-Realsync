@@ -24,22 +24,34 @@ o.default = 1
 
 o = s:option(Value, "task_name", "任务名称")
 o.rmempty = false
+function o.validate(self, value, section)
+    if not value or tostring(value):match("^%s*$") then
+        return nil, "任务名称不能为空"
+    end
+    -- 检查唯一性
+    local uci = require "luci.model.uci".cursor()
+    local found = false
+    uci:foreach("realsync", "task", function(s)
+        if s.task_name == value and s[".name"] ~= section then
+            found = true
+        end
+    end)
+    if found then
+        return nil, "任务名称必须唯一，已存在同名任务"
+    end
+    return value
+end
 
 o = s:option(Value, "source_dir", "源目录")
 o.datatype = "directory"
 o.rmempty = false
 function o.validate(self, value, section)
     local fs = require "nixio.fs"
-    local logf = io.open("/tmp/luci_realsync_debug.log", "a+")
-    if logf then
-        logf:write(os.date("%F %T "), "source_dir 校验: ", value, "\n")
-        if not fs.stat(value, "type") then
-            logf:write(os.date("%F %T "), "目录不存在: ", value, "\n")
-            logf:close()
-            return nil, "目录不存在: " .. value
-        end
-        logf:write(os.date("%F %T "), "目录存在: ", value, "\n")
-        logf:close()
+    if not value or tostring(value):match("^%s*$") then
+        return nil, "源目录不能为空"
+    end
+    if not fs.stat(value, "type") then
+        return nil, "源目录不存在: " .. tostring(value or "")
     end
     return value
 end
@@ -49,16 +61,11 @@ o.datatype = "directory"
 o.rmempty = false
 function o.validate(self, value, section)
     local fs = require "nixio.fs"
-    local logf = io.open("/tmp/luci_realsync_debug.log", "a+")
-    if logf then
-        logf:write(os.date("%F %T "), "dest_dir 校验: ", value, "\n")
-        if not fs.stat(value, "type") then
-            logf:write(os.date("%F %T "), "目录不存在: ", value, "\n")
-            logf:close()
-            return nil, "目录不存在: " .. value
-        end
-        logf:write(os.date("%F %T "), "目录存在: ", value, "\n")
-        logf:close()
+    if not value or tostring(value):match("^%s*$") then
+        return nil, "目标目录不能为空"
+    end
+    if not fs.stat(value, "type") then
+        return nil, "目标目录不存在: " .. tostring(value or "")
     end
     return value
 end
@@ -66,6 +73,15 @@ end
 o = s:option(Value, "delay_seconds", "延迟秒数")
 o.datatype = "uinteger"
 o.default = "5"
+function o.validate(self, value, section)
+    if not value or tostring(value):match("^%s*$") then
+        return nil, "延迟秒数不能为空"
+    end
+    if not tostring(value):match("^%d+$") then
+        return nil, "延迟秒数必须为正整数"
+    end
+    return value
+end
 
 o = s:option(Flag, "delete_files", "同步删除源文件")
 o.default = 0
