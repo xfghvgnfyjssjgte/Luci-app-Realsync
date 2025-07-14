@@ -39,7 +39,6 @@ log() {
     }
 }
 
-
 config_load realsync
 
 config_get enabled "$TASK_SECTION" enabled
@@ -69,7 +68,6 @@ if [ ! -w "$dest_dir" ]; then
     exit 1
 fi
 
-
 RSYNC_OPTS="-av"
 [ "$delete_files" = "1" ] && RSYNC_OPTS="$RSYNC_OPTS --delete"
 
@@ -83,7 +81,11 @@ else
 
 fi
 
-log "info" "启动实时监控: $source_dir → $dest_dir (监控事件: 文件修改、创建、删除、移动)"
+if [ "$delete_files" = "1" ]; then
+    log "info" "启动实时监控: $source_dir → $dest_dir (监控事件: 文件修改、创建、删除、移动)"
+else
+    log "info" "启动实时监控: $source_dir → $dest_dir (监控事件: 文件修改、创建、移动)"
+fi
 
 inotifywait -m -q -r -e modify,create,delete,move "$source_dir" | while read path event file; do
     local file_path="${path}${file}"
@@ -109,7 +111,6 @@ inotifywait -m -q -r -e modify,create,delete,move "$source_dir" | while read pat
             ;;
     esac
     
-    
     rsync_output=$(rsync $RSYNC_OPTS "$source_dir/" "$dest_dir/" 2>&1)
     rsync_ret=$?
     
@@ -122,6 +123,5 @@ inotifywait -m -q -r -e modify,create,delete,move "$source_dir" | while read pat
 done
 
 log "warn" "监控进程意外退出,如果强制重启仍无法拉起任务，请重启路由器"
-
 
 exit 0
