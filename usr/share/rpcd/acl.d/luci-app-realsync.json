@@ -7,7 +7,8 @@
         "write": {
             "uci": [ "realsync" ],
             "file": {
-                "/var/log/realsync.log": [ "write" ]
+                "/var/log/realsync.log": [ "write" ],
+                "/var/log/realsync/": [ "read", "write" ]
             }
         }
     }

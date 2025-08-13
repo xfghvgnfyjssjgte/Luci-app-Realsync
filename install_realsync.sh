@@ -1,18 +1,11 @@
 #!/bin/sh
 
-# =============================================================================
-#        LuCI App for realsync - Installation/Uninstallation Script
-# =============================================================================
-#  Run this script from the root of the repository on your OpenWrt device.
-#  Usage: ./install_realsync.sh [install|uninstall]
-# =============================================================================
-
 # Color codes for output
 C_RED='\033[0;31m'
 C_GREEN='\033[0;32m'
 C_YELLOW='\033[0;33m'
 C_BLUE='\033[0;34m'
-C_NC='\033[0m' # No Color
+C_NC='\033[0m'
 
 echo_info() { echo -e "${C_BLUE}[INFO]${C_NC} $1"; }
 echo_ok() { echo -e "${C_GREEN}[OK]${C_NC} $1"; }
@@ -27,12 +20,10 @@ check_root() {
     fi
 }
 
-# --- Installation Function ---
 install_app() {
     check_root
     echo_info "Starting installation of LuCI App realsync..."
 
-    # --- Dependency Check ---
     echo_info "Checking for required packages..."
 
     check_and_install_pkg() {
@@ -48,22 +39,18 @@ install_app() {
                     echo_info "Running 'opkg update'"
                     opkg update
                     
-                    # Try primary package name first
                     echo_info "Attempting to install '$pkg_name'"
                     if opkg install "$pkg_name"; then
-                        # Try to find the command in common locations
                         if command -v "$cmd_name" >/dev/null 2>&1; then
                             echo_ok "Successfully installed '$pkg_name'"
                             return 0
                         else
-                            # Check if the command exists in /usr/bin or /bin
                             for path in /usr/bin /bin /usr/sbin /sbin; do
                                 if [ -x "$path/$cmd_name" ]; then
                                     echo_ok "Found '$cmd_name' in $path"
                                     return 0
                                 fi
                             done
-                            # Try to refresh PATH and check again
                             export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
                             if command -v "$cmd_name" >/dev/null 2>&1; then
                                 echo_ok "Successfully installed '$pkg_name' (after PATH refresh)"
@@ -72,23 +59,19 @@ install_app() {
                         fi
                     fi
                     
-                    # If primary package failed and alternative name is provided, try it
                     if [ -n "$alt_pkg_name" ]; then
                         echo_info "Primary package failed, trying alternative '$alt_pkg_name'"
                         if opkg install "$alt_pkg_name"; then
-                            # Try to find the command in common locations
                             if command -v "$cmd_name" >/dev/null 2>&1; then
                                 echo_ok "Successfully installed '$alt_pkg_name'"
                                 return 0
                             else
-                                # Check if the command exists in /usr/bin or /bin
                                 for path in /usr/bin /bin /usr/sbin /sbin; do
                                     if [ -x "$path/$cmd_name" ]; then
                                         echo_ok "Found '$cmd_name' in $path"
                                         return 0
                                     fi
                                 done
-                                # Try to refresh PATH and check again
                                 export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
                                 if command -v "$cmd_name" >/dev/null 2>&1; then
                                     echo_ok "Successfully installed '$alt_pkg_name' (after PATH refresh)"
@@ -98,7 +81,6 @@ install_app() {
                         fi
                     fi
                     
-                    # If both failed, try manual installation suggestions
                     echo_error "Failed to install '$pkg_name'"
                     if [ -n "$alt_pkg_name" ]; then
                         echo_info "You can try installing manually with:"
@@ -110,18 +92,15 @@ install_app() {
                         echo_info "  opkg install $pkg_name"
                     fi
                     
-                    # Additional troubleshooting for inotifywait
                     if [ "$cmd_name" = "inotifywait" ]; then
                         echo_info "For inotifywait, you might also try:"
                         echo_info "  opkg install inotify-tools"
                         echo_info "  or check if the package provides the command:"
                         echo_info "  opkg files libinotifytools"
                         
-                        # Check if we can find the command in the package
                         echo_info "Checking if inotifywait exists in the installed package..."
                         if opkg files libinotifytools | grep -q inotifywait; then
                             echo_info "Package contains inotifywait, checking for symlinks..."
-                            # Try to create symlink if needed
                             for path in /usr/bin /bin /usr/sbin /sbin; do
                                 if [ -f "$path/inotifywait" ]; then
                                     echo_ok "Found inotifywait in $path"
@@ -144,49 +123,41 @@ install_app() {
     check_and_install_pkg "rsync" "rsync"
     check_and_install_pkg "inotifywait" "inotifywait"
 
-    # --- File Installation ---
     echo_info "Copying application files..."
 
-    # Copy LuCI files
     cp -r ./usr/lib/lua/luci/* /usr/lib/lua/luci/
     if [ $? -ne 0 ]; then echo_error "Failed to copy LuCI files."; exit 1; fi
     echo_ok "LuCI files copied."
 
-    # Copy scripts and binaries
     cp -r ./usr/bin/* /usr/bin/
     if [ $? -ne 0 ]; then echo_error "Failed to copy scripts to /usr/bin/."; exit 1; fi
     echo_ok "Scripts copied."
 
-    # Copy init.d scripts
     cp -r ./etc/init.d/* /etc/init.d/
     if [ $? -ne 0 ]; then echo_error "Failed to copy init.d scripts."; exit 1; fi
     echo_ok "Init.d scripts copied."
 
-    # Copy config templates
     cp -r ./etc/config/* /etc/config/
     if [ $? -ne 0 ]; then echo_error "Failed to copy config templates."; exit 1; fi
     echo_ok "Config templates copied."
 
-    # Copy ACL files
     cp -r ./usr/share/rpcd/* /usr/share/rpcd/
     if [ $? -ne 0 ]; then echo_error "Failed to copy ACL files."; exit 1; fi
     echo_ok "ACL files copied."
 
-    # --- Set Permissions ---
     echo_info "Setting executable permissions..."
     chmod +x /etc/init.d/realsync
     chmod +x /usr/bin/realsync.sh
     echo_ok "Permissions set."
 
-    # --- Clean LuCI Cache ---
     echo_info "Cleaning LuCI cache..."
     rm -f /tmp/luci-indexcache
     echo_ok "LuCI cache cleared."
 
-    # --- Restart uhttpd for LuCI interface ---
     echo_info "Restarting uhttpd service for LuCI interface..."
     if [ -f /etc/init.d/uhttpd ]; then
         /etc/init.d/uhttpd restart
+        /etc/init.d/rpcd restart
         echo_ok "uhttpd service restarted."
     else
         echo_warn "uhttpd service not found, LuCI interface may not display properly."
@@ -200,12 +171,10 @@ install_app() {
     exit 0
 }
 
-# --- Uninstallation Function ---
 uninstall_app() {
     check_root
     echo_info "Starting uninstallation of LuCI App realsync..."
 
-    # --- Stop and Disable Service ---
     echo_info "Stopping and disabling the realsync service..."
     if [ -f /etc/init.d/realsync ]; then
         /etc/init.d/realsync stop
@@ -215,7 +184,6 @@ uninstall_app() {
         echo_warn "Service script not found, skipping."
     fi
 
-    # --- Remove Files ---
     echo_info "Removing application files..."
 
     rm -f /usr/lib/lua/luci/controller/realsync.lua
@@ -229,7 +197,6 @@ uninstall_app() {
 
     echo_ok "Application files removed."
 
-    # --- Clean Cache ---
     echo_info "Cleaning LuCI cache..."
     rm -f /tmp/luci-indexcache
     echo_ok "LuCI cache cleared."
@@ -239,7 +206,6 @@ uninstall_app() {
     echo_info "=================================================================="
 }
 
-# --- Main Logic ---
 if [ -n "$1" ]; then
     case "$1" in
         install)
@@ -254,7 +220,6 @@ if [ -n "$1" ]; then
             ;;
     esac
 else
-    # --- Main Menu (Interactive) ---
     while true; do
         echo_info "\nLuCI App realsync Management Menu"
         echo_info "-----------------------------------"

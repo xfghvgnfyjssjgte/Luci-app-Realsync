@@ -1,86 +1,314 @@
 <%+header%>
 <style>
-.realsync-status-table { width:100%; border-collapse:collapse; margin-bottom:1em; }
-.realsync-status-table th, .realsync-status-table td { border:1px solid #ddd; padding:8px; text-align:center; }
-.realsync-status-table th { background:#f5f5f5; }
-#realsync-log { width:100%; height:300px; background:#222; color:#eee; font-family:monospace; padding:10px; overflow:auto; border-radius:4px; }
+.realsync-container { display: flex; gap: 20px; }
+.realsync-sidebar {
+    height: calc(100vh - 120px);
+    min-height: 400px;
+    max-height: 80vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+.realsync-task-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+.realsync-task-search {
+    margin-bottom: 10px;
+}
+.realsync-task-search input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+}
+.realsync-task-item {
+    padding: 10px;
+    margin: 5px 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+.realsync-task-item:hover {
+    background-color: #e9ecef;
+}
+.realsync-task-item.active {
+    background-color: #007bff;
+    color: white;
+    border-color: #0056b3;
+}
+.realsync-task-name { font-weight: bold; margin-bottom: 5px; }
+.realsync-task-status { font-size: 12px; }
+.realsync-task-status.running { color: #28a745; }
+.realsync-task-status.stopped { color: #dc3545; }
+.realsync-task-status.disabled { color: #6c757d; }
+
+.realsync-main { flex: 1; }
+.realsync-log-container {
+    background: #181c20;
+    color: #fff;
+    font-family: monospace;
+    font-size: 14px;
+    padding: 15px;
+    border-radius: 4px;
+    height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.log-line { padding: 2px 0; transition: background 0.2s; }
+.log-line:hover { background: #333; }
+
+.realsync-controls {
+    margin-bottom: 15px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+.realsync-controls select {
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+.realsync-controls button {
+    padding: 5px 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.realsync-controls .refresh { background: #28a745; color: white; }
+.realsync-controls .clear { background: #dc3545; color: white; }
+.realsync-controls .restart { background: #ffc107; color: black; }
+.log-event-label {
+    color: #ffc107;
+    font-weight: bold;
+}
+.log-event-type.modify { color: #4dabf7; font-weight: bold; }
+.log-event-type.create { color: #4caf50; font-weight: bold; }
+.log-event-type.delete { color: #ff4c4c; font-weight: bold; }
+.log-event-type.move   { color: #ff9800; font-weight: bold; }
+.realsync-task-path-ellipsis {
+    font-size: 11px;
+    color: #666;
+    margin-top: 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+    display: block;
+}
 </style>
-<div class="cbi-section">
-  <h2>realsync 服务状态</h2>
-  <div id="service-status">加载中...</div>
-  <button class="cbi-button cbi-button-apply" onclick="realsyncRestart()">强制重启</button>
+
+<div class="realsync-container">
+    <div class="realsync-sidebar">
+        <div class="realsync-task-search">
+            <input type="text" id="task-search" placeholder="搜索任务..." oninput="filterTaskList()" />
+        </div>
+        <div class="realsync-task-list" id="task-list-wrapper">
+            <div id="task-list">
+                <div class="realsync-task-item">
+                    <div>加载中...</div>
+                </div>
+            </div>
+        </div>
+        <div class="realsync-controls">
+            <button class="restart" onclick="restartAllTasks()">重启所有任务</button>
+        </div>
+    </div>
+    <div class="realsync-main">
+        <div class="realsync-controls">
+            <select id="task-selector" onchange="switchTask()">
+                <option value="">选择任务查看日志</option>
+            </select>
+            <button class="refresh" onclick="refreshCurrentLog()">刷新日志</button>
+            <button class="clear" onclick="clearCurrentLog()">清空日志</button>
+            <span id="log-info" style="margin-left: 10px; color: #666;"></span>
+        </div>
+        <div class="realsync-log-container" id="log-display">
+            请选择一个任务查看日志....
+        </div>
+    </div>
 </div>
-<div class="cbi-section">
-  <h2>任务运行状态</h2>
-  <table class="realsync-status-table" id="task-table">
-    <thead>
-      <tr>
-        <th>任务名</th>
-        <th>启用</th>
-        <th>运行状态</th>
-      </tr>
-    </thead>
-    <tbody id="task-table-body">
-      <tr><td colspan="3">加载中...</td></tr>
-    </tbody>
-  </table>
-</div>
-<div class="cbi-section">
-  <h2>日志内容</h2>
-  <button class="cbi-button" onclick="realsyncLogRefresh()">刷新日志</button>
-  <button class="cbi-button" onclick="realsyncClearLog()">清空日志</button>
-  <pre id="realsync-log">加载中...</pre>
-</div>
+
 <script type="text/javascript">
-function realsyncStatus() {
-  XHR.get('<%=luci.dispatcher.build_url("admin/services/realsync/get_status")%>', null, function(x, data) {
-    document.getElementById('service-status').innerText = data && data.status ? data.status : '未知';
-  });
+let currentTask = '';
+let taskList = [];
+let filteredTaskList = [];
+
+function loadTaskList() {
+    XHR.get('<%=luci.dispatcher.build_url("admin/services/realsync/get_task_list")%>', null, function(x, data) {
+        if (data && data.tasks) {
+            taskList = data.tasks;
+            filteredTaskList = taskList;
+            renderTaskList();
+            updateTaskSelector();
+        }
+    });
 }
-function realsyncRestart() {
-  if (!confirm('确定要重启 realsync 服务吗？')) return;
-  XHR.get('<%=luci.dispatcher.build_url("admin/services/realsync/restart_service")%>', null, function(x, data) {
-    alert(data && data.message ? data.message : '重启命令已发送');
-    setTimeout(realsyncStatus, 1000);
-    setTimeout(realsyncTaskStatus, 1500);
-  });
-}
-function realsyncLogRefresh() {
-  XHR.get('<%=luci.dispatcher.build_url("admin/services/realsync/get_log")%>', null, function(x, data) {
-    document.getElementById('realsync-log').innerText = data && data.log ? data.log : '无日志';
-  });
-}
-function realsyncClearLog() {
-  if (!confirm('确定要清空日志吗？')) return;
-  XHR.get('<%=luci.dispatcher.build_url("admin/services/realsync/clear_log")%>', null, function(x, data) {
-    if (data && data.success) {
-      alert(data.message || '日志已清空');
-      realsyncLogRefresh();
+
+function filterTaskList() {
+    const keyword = document.getElementById('task-search').value.trim().toLowerCase();
+    if (!keyword) {
+        filteredTaskList = taskList;
     } else {
-      alert(data && data.message ? data.message : '清空日志失败');
+        filteredTaskList = taskList.filter(task =>
+            (task.name && task.name.toLowerCase().includes(keyword)) ||
+            (task.section && task.section.toLowerCase().includes(keyword))
+        );
     }
-  });
+    renderTaskList();
+    updateTaskSelector();
 }
-function realsyncTaskStatus() {
-  XHR.get('<%=luci.dispatcher.build_url("admin/services/realsync/get_status")%>', null, function(x, data) {
-    if (data && data.tasks) {
-      var html = '';
-      for (var i = 0; i < data.tasks.length; i++) {
-        var task = data.tasks[i];
-        html += '<tr><td>' + (task.name || '') + '</td><td>' + (task.enable ? '是' : '否') + '</td><td>' + (task.status || '未知') + '</td></tr>';
-      }
-      document.getElementById('task-table-body').innerHTML = html;
+
+function renderTaskList() {
+    const taskListDiv = document.getElementById('task-list');
+    let html = '';
+    filteredTaskList.forEach(task => {
+        let statusClass = 'disabled';
+        if (task.status === '运行中') statusClass = 'running';
+        else if (task.status === '未启动') statusClass = 'stopped';
+        else if (task.status === '未启用') statusClass = 'disabled';
+        else statusClass = '';
+        const statusText = task.status;
+        // 路径省略显示+悬停完整路径
+        const pathText = `${task.source_dir} → ${task.dest_dir}`;
+        html += `
+            <div class="realsync-task-item" onclick="selectTask('${task.section}')">
+                <div class="realsync-task-name">${task.name}</div>
+                <div class="realsync-task-status ${statusClass}">${statusText}</div>
+                <div class="realsync-task-path-ellipsis" title="${pathText}">
+                    ${pathText}
+                </div>
+            </div>
+        `;
+    });
+    taskListDiv.innerHTML = html;
+}
+
+function updateTaskSelector() {
+    const selector = document.getElementById('task-selector');
+    let html = '<option value="">选择任务查看日志</option>';
+    filteredTaskList.forEach(task => {
+        html += `<option value="${task.section}">${task.name}</option>`;
+    });
+    selector.innerHTML = html;
+}
+
+function selectTask(taskSection) {
+    currentTask = taskSection;
+    document.getElementById('task-selector').value = taskSection;
+    document.querySelectorAll('.realsync-task-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    const taskItems = document.querySelectorAll('.realsync-task-item');
+    filteredTaskList.forEach((task, index) => {
+        if (task.section === taskSection) {
+            taskItems[index].classList.add('active');
+        }
+    });
+    loadTaskLog(taskSection);
+}
+
+function switchTask() {
+    const taskSection = document.getElementById('task-selector').value;
+    if (taskSection) {
+        selectTask(taskSection);
     } else {
-      document.getElementById('task-table-body').innerHTML = '<tr><td colspan="3">暂未获取到任务状态</td></tr>';
+        currentTask = '';
+        document.getElementById('log-display').innerText = '请选择一个任务查看日志...';
+        document.getElementById('log-info').innerText = '';
     }
-  });
 }
+
+function loadTaskLog(taskSection) {
+    if (!taskSection) return;
+    XHR.get('<%=luci.dispatcher.build_url("admin/services/realsync/get_task_log")%>', 
+        {task: taskSection, lines: 200}, function(x, data) {
+        if (data && data.log) {
+            displayLog(data.log, taskSection);
+        } else {
+            displayLog('日志文件不存在或为空', taskSection);
+        }
+    });
+}
+
+function highlightMonitorEvent(line) {
+    if (line.includes('监控事件:')) {
+        // 高亮“监控事件:”
+        line = line.replace('监控事件:', '<span class="log-event-label">监控事件:</span>');
+        // 高亮事件类型
+        line = line.replace('文件修改', '<span class="log-event-type modify">文件修改</span>');
+        line = line.replace('创建', '<span class="log-event-type create">创建</span>');
+        line = line.replace('删除', '<span class="log-event-type delete">删除</span>');
+        line = line.replace('移动', '<span class="log-event-type move">移动</span>');
+    }
+    return line;
+}
+
+function displayLog(logContent, taskSection) {
+    const logDisplay = document.getElementById('log-display');
+    const logInfo = document.getElementById('log-info');
+    let formattedLog = '';
+    const lines = logContent.split('\n');
+    lines.forEach(line => {
+        if (line.trim()) {
+            formattedLog += `<div class="log-line">${highlightMonitorEvent(line)}</div>`;
+        }
+    });
+    logDisplay.innerHTML = formattedLog;
+    logDisplay.scrollTop = logDisplay.scrollHeight;
+    const task = filteredTaskList.find(t => t.section === taskSection);
+    if (task) {
+        logInfo.innerText = `当前查看: ${task.name} (${lines.length} 行)`;
+    }
+}
+
+function refreshCurrentLog() {
+    if (currentTask) {
+        loadTaskLog(currentTask);
+    }
+}
+
+function clearCurrentLog() {
+    if (!currentTask) {
+        alert('请先选择一个任务');
+        return;
+    }
+    if (!confirm('确定要清空当前任务的日志吗？')) return;
+    XHR.get('<%=luci.dispatcher.build_url("admin/services/realsync/clear_task_log")%>', 
+        {task: currentTask}, function(x, data) {
+        if (data && data.success) {
+            alert('日志已清空');
+            loadTaskLog(currentTask);
+        } else {
+            alert(data && data.message ? data.message : '清空日志失败');
+        }
+    });
+}
+
+function restartAllTasks() {
+    if (!confirm('确定要重启所有任务吗？')) return;
+    XHR.get('<%=luci.dispatcher.build_url("admin/services/realsync/restart_service")%>', null, function(x, data) {
+        alert(data && data.message ? data.message : '重启命令已发送');
+        setTimeout(loadTaskList, 2000);
+    });
+}
+
 window.onload = function() {
-  realsyncStatus();
-  realsyncLogRefresh();
-  realsyncTaskStatus();
-  setInterval(realsyncStatus, 5000);
-  setInterval(realsyncTaskStatus, 5000);
+    loadTaskList();
+    setInterval(loadTaskList, 10000);
+    setInterval(function() {
+        if (currentTask) {
+            loadTaskLog(currentTask);
+        }
+    }, 5000);
 };
 </script>
 <%+footer%> 
